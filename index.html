@@ -18,7 +18,7 @@
         /* Custom CSS Variables for Theming */
         :root {
             --bg-color-start: #020617; /* slate-950 */
-            --bg-color-end: #111827;   /* gray-900 */
+            --bg-color-end: #111827;    /* gray-900 */
             --panel-bg: rgba(15, 23, 42, 0.6); /* slate-900 with opacity */
             --border-color: rgba(59, 130, 246, 0.2); /* blue-500 with opacity */
             --glow-color: #38bdf8; /* sky-400 */
@@ -280,8 +280,8 @@
     <script>
     (() => {
         // --- GLOBAL CONFIGURATION ---
-        const DEPOSIT_WEBHOOK_URL = 'https://alejandroabc.app.n8n.cloud/webhook/42f1372b-15ea-4f55-9b71-0e8737ab2311';
-        const INDICATIONS_WEBHOOK_URL = 'https://alejandroabc.app.n8n.cloud/webhook/7b5794a9-b105-47b5-85ed-004e54e05f7a';
+        const DEPOSIT_WEBHOOK_URL = 'https://metricas.app.n8n.cloud/webhook/346b794c-284d-452c-8ee3-31fc7d9cedf7';
+        const INDICATIONS_WEBHOOK_URL = 'https://metricas.app.n8n.cloud/webhook/ab44accf-fb88-4aaa-bdc1-d09d5f29499b';
         
         const DATA_REFRESH_INTERVAL = 1800 * 1000; // 30 minutes
         const VIEW_ROTATION_INTERVAL = 15 * 1000; // 15 seconds
@@ -372,6 +372,7 @@
         const parseCurrency = (value) => { 
             if (typeof value === 'number') return value; 
             if (typeof value === 'string' && value.trim() !== '') {
+                // Adjusting to handle both period and comma as decimal separators
                 let cleanedValue = value.replace(/[^\d.,-]/g, '');
                 if (cleanedValue.includes(',') && cleanedValue.includes('.')) {
                     cleanedValue = cleanedValue.lastIndexOf(',') > cleanedValue.lastIndexOf('.') ? cleanedValue.replace(/\./g, '').replace(',', '.') : cleanedValue.replace(/,/g, '');
@@ -383,14 +384,31 @@
             return 0; 
         };
 
-        const formatCurrency = (value) => value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+        const formatCurrency = (value) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'USD' });
 
         const parseDate = (dateStr) => { 
             if (!dateStr || typeof dateStr !== 'string') return null; 
-            const parts = dateStr.split('/'); 
-            if (parts.length === 3) {
-                return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])); 
+
+            // Check for YYYY-MM-DD format first (from new deposit webhook)
+            if (dateStr.includes('-')) {
+                const parts = dateStr.split(' ')[0].split('-');
+                if (parts.length === 3) {
+                    return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                }
             }
+            
+            // Check for DD/MM/YYYY format (from indications webhook)
+            if (dateStr.includes('/')) {
+                const parts = dateStr.split(' ')[0].split('/');
+                if (parts.length === 3) {
+                    let year = parseInt(parts[2]);
+                    if (year < 100) {
+                        year += (year > new Date().getFullYear() % 100) ? 1900 : 2000;
+                    }
+                    return new Date(year, parseInt(parts[1]) - 1, parseInt(parts[0])); 
+                }
+            }
+            
             return null; 
         };
 
@@ -469,6 +487,7 @@
             startOfWeek.setDate(today.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1));
 
             return data.map(item => {
+                // Adjusted to use new fields. Dates come from different fields.
                 const rawDateString = item['col_6'] || (item['col_1'] ? item['col_1'].split(' ')[0] : null);
                 const parsedDate = parseDate(rawDateString);
                 return { 
@@ -510,17 +529,20 @@
             };
 
             depositData.forEach(item => { 
-                const canonicalName = getCanonicalName(item['Broker']);
+                // Using new field `broker`
+                const canonicalName = getCanonicalName(item['broker']);
                 ensureBroker(canonicalName);
                 if (summary[canonicalName]) {
-                    summary[canonicalName].totalDeposito += parseCurrency(item['col_5']); 
-                    if (item['Ativação'] === 'Ativação') { 
+                    // Using new field `deposito` and `ativacao`
+                    summary[canonicalName].totalDeposito += parseCurrency(item['deposito']); 
+                    if (item['ativacao'] === 'Ativação') { 
                         summary[canonicalName].activationCount++; 
                     }
                 }
             });
 
             indicationsData.forEach(item => {
+                // Using new field `BROKER:`
                 const canonicalName = getCanonicalName(item['BROKER:'] || item['Broker']);
                 ensureBroker(canonicalName);
 
@@ -588,8 +610,9 @@
         }
 
         function renderGeneralMetrics(depositData, indicationsOverall) {
-            const totalActivations = depositData.filter(item => item['Ativação'] === 'Ativação').length;
-            const totalDeposits = depositData.reduce((sum, item) => sum + parseCurrency(item['col_5']), 0);
+            // Using new fields `ativacao` and `deposito`
+            const totalActivations = depositData.filter(item => item['ativacao'] === 'Ativação').length;
+            const totalDeposits = depositData.reduce((sum, item) => sum + parseCurrency(item['deposito']), 0);
 
             const aldeiaConversion = indicationsOverall.aldeia.total > 0 ? (indicationsOverall.aldeia.purchased / indicationsOverall.aldeia.total) * 100 : 0;
             const triboConversion = indicationsOverall.tribo.total > 0 ? (indicationsOverall.tribo.purchased / indicationsOverall.tribo.total) * 100 : 0;
@@ -623,7 +646,7 @@
                 <!-- Tribo Indications Card -->
                 <div class="fade-in-child bg-slate-900/50 p-6 rounded-3xl h-full border border-slate-700/50 flex flex-col" style="animation-delay: 400ms;">
                     <h2 class="text-xl font-bold text-center text-white mb-4 flex items-center justify-center gap-2">
-                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-sky-400"><path d="M12 22a2 2 0 0 0 2-2V2a2 2 0 0 0-4 0v18a2 2 0 0 0 2 2Z"/><path d="M6 12a2 2 0 0 0 2-2V2a2 2 0 0 0-4 0v8a2 2 0 0 0 2 2Z"/><path d="M18 12a2 2 0 0 0 2-2V2a2 2 0 0 0-4 0v8a2 2 0 0 0 2 2Z"/></svg>
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-sky-400"><path d="M12 22a2 2 0 0 0 2-2V2a2 2 0 0 0-4 0v18a2 2 0 0 0 2 2Z"/><path d="M6 12a2 2 0 0 0 2-2V2a2 2 0 0 0-4 0v8a2 2 0 0 0 2 2Z"/><path d="M18 12a2 2 0 0 0 2-2V2a2 2 0 0 0-4 0v8a2 2 0 0 0 2 2Z"/></svg>
                         Indicações Tribo
                     </h2>
                     <div class="mt-4 text-center space-y-2 flex-grow flex flex-col justify-center">
@@ -683,12 +706,14 @@
 
         function renderAnalysisChart(data) {
             const summary = data.reduce((acc, item) => {
-                const canonicalName = getCanonicalName(item['Broker']);
+                // Using new field `broker`
+                const canonicalName = getCanonicalName(item['broker']);
                 if(!canonicalName || canonicalName.includes('Ambiguidade')) return acc;
 
                 if(!acc[canonicalName]) acc[canonicalName] = { brokerName: canonicalName, totalDeposito: 0, depositoCount: 0 };
                 
-                const depositoValor = parseCurrency(item['col_5']); 
+                // Using new field `deposito`
+                const depositoValor = parseCurrency(item['deposito']); 
                 if (depositoValor > 0) { 
                     acc[canonicalName].totalDeposito += depositoValor; 
                     acc[canonicalName].depositoCount++; 
@@ -817,6 +842,7 @@
         function populateFilters(data) {
             const months = new Map();
             data.forEach(item => { 
+                // Adjusted to use new date fields from both webhooks
                 const dateString = item['col_6'] || (item['col_1'] ? item['col_1'].split(' ')[0] : null);
                 const date = parseDate(dateString); 
                 
@@ -915,4 +941,3 @@
     </script>
 </body>
 </html>
-
